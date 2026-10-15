@@ -1,0 +1,20 @@
+{
+  "name": "photon-bridge",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/ttosi/photon-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/ttosi/photon-bridge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ttosi/photon-bridge.git"
+  },
+  "license": "MIT",
+  "author": "",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
