@@ -540,5 +540,44 @@ class CliHierarchyTests(unittest.TestCase):
                 preview.assert_not_called()
 
 
+class AuthenticationFallbackTests(unittest.TestCase):
+    def test_unestablished_native_login_preserves_existing_session_offline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            session_file = Path(folder) / 'session.json'
+            saved = b'{"token":"cached-test-session","api_base":"https://api.example"}'
+            session_file.write_bytes(saved)
+            session_file.chmod(0o600)
+            with patch.object(p, 'SESSION_FILE', session_file), patch.dict(os.environ, {}, clear=True), \
+                    patch.object(p.requests.sessions.Session, 'request', side_effect=AssertionError('No HTTP')), \
+                    patch('builtins.input', side_effect=AssertionError('Do not solicit unsupported credentials')), \
+                    patch.object(sys, 'argv', ['photonctl.py', 'login']), \
+                    contextlib.redirect_stdout(io.StringIO()) as out, \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(p.main(), 1)
+            self.assertIn('Email/password login is not verified', err.getvalue())
+            self.assertNotIn('cached-test-session', out.getvalue() + err.getvalue())
+            self.assertEqual(session_file.read_bytes(), saved)
+            self.assertEqual(session_file.stat().st_mode & 0o777, 0o600)
+
+    def test_invalid_manual_import_preserves_existing_session_without_exposure(self):
+        for env in ({'PHOTONCTL_TOKEN': 'private-token'},
+                    {'PHOTONCTL_TOKEN': 'private-token', 'PHOTONCTL_API_BASE': 'http://invalid.example'},
+                    {'PHOTONCTL_TOKEN': 'private-token\ninvalid', 'PHOTONCTL_API_BASE': 'https://api.example'}):
+            with self.subTest(env_keys=list(env)), tempfile.TemporaryDirectory() as folder:
+                session_file = Path(folder) / 'session.json'
+                saved = b'{"token":"cached-test-session","api_base":"https://api.example"}'
+                session_file.write_bytes(saved)
+                session_file.chmod(0o600)
+                with patch.object(p, 'SESSION_FILE', session_file), patch.dict(os.environ, env, clear=True), \
+                        patch.object(p.requests.sessions.Session, 'request', side_effect=AssertionError('No HTTP')), \
+                        patch.object(sys, 'argv', ['photonctl.py', 'login']), \
+                        contextlib.redirect_stdout(io.StringIO()) as out, \
+                        contextlib.redirect_stderr(io.StringIO()) as err:
+                    self.assertEqual(p.main(), 1)
+                self.assertEqual(session_file.read_bytes(), saved)
+                self.assertNotIn('private-token', out.getvalue() + err.getvalue())
+                self.assertNotIn('cached-test-session', out.getvalue() + err.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()

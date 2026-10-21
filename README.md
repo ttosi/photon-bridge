@@ -48,8 +48,13 @@ published deprecation release; no removal date is scheduled. `login` is unchange
 
 ## Login (existing session fallback)
 
-Email/password automation is **not verified or implemented**. `login` securely
-imports an existing QCloud session; it does not authenticate or validate it online.
+Email/password automation is **not established or implemented**. APK analysis
+found a hosted Casdoor login with an OAuth-to-QCloud exchange, not a complete
+native password protocol. See [authentication findings and blockers](discovery/authentication.md).
+No native live-login test is available yet; `login` continues to securely import
+an existing QCloud session and does not authenticate or validate it online.
+Failed or incomplete imports preserve an existing cached session. No refresh
+mechanism or token lifetime is assumed.
 
 1. Sign in yourself at <https://cloud-universe.anycubic.com/file> using the official
    browser login, including any CAPTCHA or MFA.
