@@ -10,6 +10,42 @@ python3 -m venv .venv
 python3 -m pip install requests
 ```
 
+## Command layout
+
+```text
+python3 photonctl.py login
+python3 photonctl.py file upload <path> [--dry-run] [--verbose]
+python3 photonctl.py file list [--page 1] [--limit 10]
+python3 photonctl.py printer list
+python3 photonctl.py printer info <printer-id>
+python3 photonctl.py printer status <printer-id>
+python3 photonctl.py printer print <file-id> --printer <printer-id> --dry-run
+```
+
+Use `--help` at the root, resource or command level, for example
+`python3 photonctl.py file --help` or `python3 photonctl.py printer print --help`.
+Existing upload/list filters and argument types are unchanged. The legacy root
+`--dry-run` spelling (before the resource) still works where it previously did;
+prefer `--dry-run` on the upload or print command. Print dispatch remains disabled.
+
+The following old top-level commands are temporarily accepted as hidden deprecated
+aliases. They parse the same operation arguments and call the same handlers:
+
+| Deprecated command | Preferred command |
+|---|---|
+| `upload` | `file upload` |
+| `files` | `file list` |
+| `printers` | `printer list` |
+| `printer-info` | `printer info` |
+| `printer-status` | `printer status` |
+| `print` | `printer print` |
+
+Aliases emit a warning on stderr; normal stdout and operation exit codes are
+unchanged. Their own `--help` remains available, but root help advertises only the
+new layout. Migrate scripts to the preferred forms, particularly scripts requiring
+empty stderr. Aliases can be removed in a future major release after at least one
+published deprecation release; no removal date is scheduled. `login` is unchanged.
+
 ## Login (existing session fallback)
 
 Email/password automation is **not verified or implemented**. `login` securely
@@ -50,14 +86,14 @@ reimported from the official client.
 First check the local file without any network traffic:
 
 ```bash
-python3 photonctl.py upload /path/to/model.pm4u --dry-run
+python3 photonctl.py file upload /path/to/model.pm4u --dry-run
 ```
 
 This checks extension, regular/nonempty file, size and MD5. It does not parse or
 certify the internal slice format. Then upload explicitly:
 
 ```bash
-python3 photonctl.py upload /path/to/model.pm4u
+python3 photonctl.py file upload /path/to/model.pm4u
 ```
 
 Check the official Android app's cloud files afterward. A successful server
@@ -108,7 +144,7 @@ registration nor `machine_type: 0` / `status: 2` establishes print readiness.
 Run this next, using the existing cached session:
 
 ```bash
-python3 photonctl.py files
+python3 photonctl.py file list
 ```
 
 This makes exactly one read-only `POST /work/index/files` request with
@@ -127,7 +163,7 @@ Pagination uses positive integers: `--page` defaults to 1 and `--limit` to 10.
 For the next page:
 
 ```bash
-python3 photonctl.py files --page 2 --limit 10
+python3 photonctl.py file list --page 2 --limit 10
 ```
 
 `--file-type`, `--orderby` and `--machine-type` remain optional with no defaults;
@@ -138,9 +174,63 @@ Do not interpret an empty page as proof of missing registration. Server defaults
 pagination, machine filters and file-type filters may hide a registered file.
 Compare returned IDs and original filenames with the completed upload first.
 
-`upload --verbose` prints sanitized JSON from reservation, confirmation and release,
+`file upload --verbose` prints sanitized JSON from reservation, confirmation and release,
 including API codes and returned IDs. This command performs a fresh upload:
 
 ```bash
-python3 photonctl.py upload /path/to/model.pm4u --verbose
+python3 photonctl.py file upload /path/to/model.pm4u --verbose
 ```
+
+## Read-only printer discovery and offline print preview
+
+```bash
+python3 photonctl.py printer list
+python3 photonctl.py printer info 797953
+python3 photonctl.py printer print <cloud-file-id> --printer 797953 --dry-run
+```
+
+`printer list` and `printer info` perform only source-backed read-only GET requests.
+They display allowlisted identity/model/state metadata with raw status values.
+`printer print --dry-run` makes no network requests and shows the complete Android
+APK-derived cloud-slice JSON constructor under `print_order`. IDs are positive
+32-bit JSON integers; `project_id=0`, `order_id=1`, `project_type=1`, `filetype=0`.
+All documented empty-string defaults and explicit nulls are preserved. There are
+no desktop task fields or preliminary settings write. Real dispatch is disabled;
+omitting `--dry-run` fails.
+
+The CLI currently previews `task_settings: null` because no live option metadata
+is supplied. This is a constructor preview, not evidence that model 130 has no
+options or that a null-settings request is suitable for this printer.
+The pure `android_print_request` helper also accepts a settings dictionary and
+explicit server-derived `supported_options` names. It checks names and integer
+value types, preserves selected values, and never fills missing options with 0.
+An empty dictionary becomes null, matching Android. Enabled `stirBeforePrint`
+requires `stir_settings: {"stirTime": <positive integer>}`; the nested name and
+shape are checked. This validates structure/support-name membership only: the
+caller must supply genuine current server/device metadata and values. Provenance,
+option-specific ranges and capabilities cannot be verified offline. No settings
+or option-fetching CLI feature is added in this change.
+
+Missing live prerequisites remain:
+
+- Model-130 supported options, current values and device-specific ranges.
+- The selected printer's model and readiness, and the selected `.pm4u` file's
+  readiness; these IDs are not looked up during dry-run.
+- Acceptance/routing of Android JSON through the existing cloud proxy.
+- Correlation of API `msgid`/`task_id` with actual printer/task acceptance.
+
+See [discovery/android-print-start.md](discovery/android-print-start.md) for APK
+locations, the Android workflow and the next separately authorized experiments.
+No control endpoint is called, including read-like orders 1228/1231, and no APK
+code is executed by the preview.
+
+## Cloud connectivity snapshot
+
+```bash
+python3 photonctl.py printer status 797953
+```
+
+Makes one read-only GET using the existing session. Displays sanitized raw status
+metadata and cloud-reported ONLINE/OFFLINE when supported by APK LCD semantics;
+otherwise UNKNOWN with a reason. Cloud status may lag physical power changes.
+No control commands are sent. See [endpoint evidence and test guidance](discovery/printer-status.md).
