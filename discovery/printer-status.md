@@ -3,7 +3,7 @@
 ## Command
 
 ```bash
-python3 photonctl.py printer-status 797953
+python3 photonctl.py printer status 797953
 ```
 
 Uses the existing cached session/environment override, signing and API base. It
@@ -105,15 +105,42 @@ working info endpoint and its existing GET helper unchanged.
 Android Retrofit paths include `api/`; photonctl's configured proxy base already
 ends in `/api`, so the command appends `/v2/printer/info`, not another `/api`.
 
+## Physical validation: Mono 4 Ultra activity
+
+The user supplied these physical observations for printer 797953, machine_type
+130, from the existing GET `/v2/printer/info`. These are physical validation,
+not published API documentation; no live requests were made during implementation.
+
+| Physical state | device_status | is_printing | Interpretation |
+|---|---|---|---|
+| Powered off | 2 | 1 | OFFLINE, activity UNKNOWN |
+| Powered on, idle | 1 | 1 | ONLINE, IDLE |
+| Actively printing | 1 | 2 | ONLINE, PRINTING |
+| After cancellation | 1 | 1 | ONLINE, IDLE |
+
+`interpret_printer_status` preserves the APK-derived LCD connectivity rules above.
+Only model 130 gains activity interpretation, and only while ONLINE. Offline
+activity is UNKNOWN even if is_printing=2: the value may be stale. Unknown
+connectivity also gives UNKNOWN activity. Numeric strings, floats, booleans,
+missing values and unrecognized flags are not coerced. Other models retain their
+existing connectivity interpretation, with activity UNKNOWN.
+
+This establishes current cloud-reported activity only. IDLE is not readiness;
+PRINTING is not proof of a particular job or new-job acceptance. Cloud freshness,
+other models' activity values and additional status codes remain unestablished.
+The implementation makes the same single signed GET with the same ID query;
+there are no probes, additional endpoints or control requests.
+
 ## Output and failure behavior
 
 Output displays allowlisted, sanitized raw discovery/status metadata, including
 ID/model, `device_status`, `is_printing`, and firmware/timestamps where returned.
 No credentials, device key, account ID, URLs or unrelated identifiers are printed.
-Raw numeric flags are not rewritten. The new interpretation is a separate line:
+Raw numeric flags are not rewritten. Connectivity and activity appear separately:
 
 ```text
 Connectivity: ONLINE (cloud-reported)
+Activity: IDLE
 ```
 
 or OFFLINE/UNKNOWN, followed by the evidence/reason. The result is **the cloud's
@@ -141,7 +168,9 @@ new status logic and CLI dispatch were added.
 python3 -B -m unittest discover -s tests -v
 ```
 
-26 tests pass. New mock coverage includes ONLINE/OFFLINE from device_status with
+55 tests pass. Mock coverage includes all four observed combinations, unknown/malformed
+activity flags, other models, default/explicit ID resolution, exactly one GET and
+no writes, as well as ONLINE/OFFLINE from device_status with
 the same is_printing value, unknown/missing flags, missing/malformed/mismatched
 records, unsupported model semantics, expired/API/HTTP failures, invalid JSON,
 timeouts, secret redaction, exact signed GET query and no write calls. Existing
